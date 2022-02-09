@@ -23,7 +23,7 @@ def extract_data(data, path, index):
         newpath = "/" + "/".join(path.split("/")[1:-1])
         node = "/" + path.split("/")[-1]
         query = fr"substring({newpath}[position()={index}]{node}"
-        charspace = "".join(chr(i) for i in range(ord("!"), ord("~") + 1) if chr(i) not in ["'",'"',])
+        charspace = "".join(chr(i) for i in range(ord(" "), ord("~") + 1) if chr(i) not in ["'",'"',])
         
     skeleton = r"{},{},1)='{}'"
     output = ""
