@@ -190,6 +190,7 @@ class XMLReconstructor:
         for path in self.cached_elements:
             if node.verify_string(path, nodetype=NodeType.ELEMENT):
                 element_name = path
+                print(path)
                 break
         else:
             element_name = node.extract_data(nodetype=NodeType.ELEMENT)
@@ -218,9 +219,10 @@ class XMLReconstructor:
         xml_node_to_process = self.not_done_queue.pop(0)
         node = Node(xml_node_to_process.element_path)
         if xml_node_to_process.number_of_children == 0:
-            for path in self.cached_text:
-                if node.verify_string(path, nodetype=NodeType.TEXT):
-                    text = path
+            for leaf in self.cached_text:
+                if node.verify_string(leaf, nodetype=NodeType.TEXT):
+                    text = leaf
+                    print(text)
                     break
             else:
                 text = node.extract_data(nodetype=NodeType.TEXT)
